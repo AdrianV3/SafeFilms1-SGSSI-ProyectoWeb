@@ -17,6 +17,11 @@ $mensaje = "";
 
 /* Si envían el formulario -> UPDATE */
 if (isset($_POST["user_modify_submit"])) {
+  // validar el token CSRF
+	if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        http_response_code(403);
+        die('Error: CSRF token inválido.');
+    }
   // Recibir campos (mismos nombres que en el form)
   $nombre      = trim($_POST["nombre"] ?? "");
   $apellido    = trim($_POST["apellido"] ?? "");
@@ -26,36 +31,6 @@ if (isset($_POST["user_modify_submit"])) {
   $fNacimiento = trim($_POST["fNacimiento"] ?? "");
   $email       = trim($_POST["email"] ?? "");
 
-
-  if ($nombre==="" || $apellido==="" || $numDni==="" || $letraDni==="" || $tlfn==="" || $fNacimiento==="" || $email==="") 
-  {
-    $mensaje = "Faltan campos obligatorios.";
-  } 
-  else 
-  {
-    if($conn->query(
-
-      "UPDATE usuarios
-       SET nombre='$nombre', apellido='$apellido', numDni='$numDni', letraDni='$letraDni', tlfn='$tlfn', fNacimiento='$fNacimiento', email='$email'
-       WHERE idU='$userId'"
-
-    ))
-    {
-      echo "<script>
-              alert('Datos actualizados correctamente');
-              window.location.href='show_user.php?user=".$userId."';
-            </script>";
-      $conn->close();
-      exit();
-    }
-    else
-    {
-      $mensaje = "Error al actualizar: " . $conn->error;
-    }
-  }
-
-
-  /* //Mas seguridad para otra entrega
   // Validaciones mínimas (servidor)
   if ($nombre==="" || $apellido==="" || $numDni==="" || $letraDni==="" || $tlfn==="" || $fNacimiento==="" || $email==="") {
     $mensaje = "Faltan campos obligatorios.";
@@ -80,10 +55,7 @@ if (isset($_POST["user_modify_submit"])) {
     }
     $stmt->close();
   }
-    */
 }
-
-
 
 /* Obtener datos actuales para pre-rellenar el formulario */
 $stmt = $conn->prepare(
@@ -135,7 +107,7 @@ if (!$user) { http_response_code(404); die("Usuario no encontrado."); }
 
     Email:<br>
     <input type="text" name="email" value="<?= htmlspecialchars($user["email"]) ?>" required><br><br>
-
+    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
     <button class="guardar_modUser" id="user_modify_submit" name="user_modify_submit" type="submit">Guardar cambios</button>
   </form>
 

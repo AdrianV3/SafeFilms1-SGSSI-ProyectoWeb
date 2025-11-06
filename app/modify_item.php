@@ -24,6 +24,11 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
 
 //PROCESAR EL FORMULARIO
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['modify_submit'])) {
+    // validar el token CSRF
+	if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+	http_response_code(403);
+	die('Error: CSRF token inválido.');
+	}
     $titulo = $_POST['titulo'];
     $anio = $_POST['anio'];
     $director = $_POST['director'];
@@ -46,104 +51,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['modify_submit'])) {
     if (!empty($errors)) {
         foreach ($errors as $err) 
         {
-            echo "<p style='color:red;'>" . htmlspecialchars($err, ENT_QUOTES, 'UTF-8') . "</p>";
+            echo "<p class='error-msg';>" . htmlspecialchars($err, ENT_QUOTES, 'UTF-8') . "</p>";
         }
         echo '<br><a href="items.php">Volver</a>';
         $conn->close();
         exit;
     }
-    
     // Verificamos cada campo. Si el usuario ha escrito algo, lo añadimos a la consulta.
     // .= para concatenar
 	if (!empty($titulo)) {
-        $campos_a_actualizar[] = "titulo = '$titulo'";          
+         $campos_a_actualizar[] = "titulo = ?"; 
+         $tipos_de_datos .= 's';                  // 's' = string
+         $valores[] = $titulo;               
     }
     if (!empty($anio)) {
-        $campos_a_actualizar[] = "anio = '$anio'";
+        $campos_a_actualizar[] = "anio = ?";
+        $tipos_de_datos .= 's';                 
+        $valores[] = $anio;
     }
     if (!empty($director)) {
-        $campos_a_actualizar[] = "director = '$director'";
+        $campos_a_actualizar[] = "director = ?";
+        $tipos_de_datos .= 's';
+        $valores[] = $director;
     }
     if (!empty($genero)) {
-        $campos_a_actualizar[] = "genero = '$genero'";
+        $campos_a_actualizar[] = "genero = ?";
+        $tipos_de_datos .= 's';
+        $valores[] = $genero;
     }
     if (!empty($duracion)) {
-        $campos_a_actualizar[] = "duracion = '$duracion'";
+        $campos_a_actualizar[] = "duracion = ?";
+        $tipos_de_datos .= 'i';
+        $valores[] = $duracion;
     }
-    // Solo ejecutamos la consulta si hay algo que actualizar
-    if (!empty($campos_a_actualizar)) {
-        $sql_update .= implode(', ', $campos_a_actualizar); // Une los campos con comas
-        $sql_update .= " WHERE idPelicula = $id_pelicula"; // Condición para modificar solo la película correcta. Poner ? en vez de $pelicula para mas seguro
-        
-        $tipos_de_datos .= 'i'; // Añadimos el tipo del ID
-        $valores[] = $id_pelicula; // Añadimos el valor del ID
 
-        //Ejecutar cambios
-        if($conn ->query($sql_update))
-        {
+	$stmt = $conn->prepare($sql_update);
+    if ($stmt) {
+        $stmt->bind_param($tipos_de_datos, ...$valores);
+        // Si la ejecución es exitosa...
+        if ($stmt->execute()) {
+            // Cerramos la conexión y redirigimos al usuario.
             $conn->close();
-            header("Location: items.php");
-            exit();
+            header("Location: items.php"); // Le decimos al navegador que vaya a items.php
+            exit(); // Detenemos el script para asegurar que la redirección ocurra.   
+        } 
+        else {
+            $mensaje = "<p class='error-msg';>Error al guardar: " . htmlspecialchars($stmt->error) . "</p>";
         }
-        else
-        {
-            $mensaje = "<p style='color:red;'>Error al guardar: " . htmlspecialchars($conn->errpr) . "</p>";
-        }
-
-        /*//Modificacion mas segura para otra entrega
-
-        // Verificamos cada campo. Si el usuario ha escrito algo, lo añadimos a la consulta.
-        // .= para concatenar
-	    if (!empty($titulo)) {
-            $campos_a_actualizar[] = "titulo = ?"; 
-            $tipos_de_datos .= 's';                  // 's' = string
-            $valores[] = $titulo;               
-        }
-        if (!empty($anio)) {
-            $campos_a_actualizar[] = "anio = ?";
-            $tipos_de_datos .= 's';                 
-            $valores[] = $anio;
-        }
-        if (!empty($director)) {
-            $campos_a_actualizar[] = "director = ?";
-            $tipos_de_datos .= 's';
-            $valores[] = $director;
-        }
-        if (!empty($genero)) {
-            $campos_a_actualizar[] = "genero = ?";
-            $tipos_de_datos .= 's';
-            $valores[] = $genero;
-        }
-        if (!empty($duracion)) {
-            $campos_a_actualizar[] = "duracion = ?";
-            $tipos_de_datos .= 'i';
-            $valores[] = $duracion;
+        $stmt->close();
+        } 
+        else {
+             $mensaje = "<p class='error-msg';>Error al preparar la consulta: " . htmlspecialchars($conn->error) . "</p>";
         }
 
-		$stmt = $conn->prepare($sql_update);
-        if ($stmt) {
-            //$stmt->bind_param($tipos_de_datos, ...$valores);
-            // Si la ejecución es exitosa...
-            if ($stmt->execute()) {
-                
-                
-                // Cerramos la conexión y redirigimos al usuario.
-                $conn->close();
-                header("Location: items.php"); // Le decimos al navegador que vaya a items.php
-                exit(); // Detenemos el script para asegurar que la redirección ocurra.
-                
-            } else {
-                $mensaje = "<p style='color:red;'>Error al guardar: " . htmlspecialchars($stmt->error) . "</p>";
-            }
-            $stmt->close();
-        } else {
-             $mensaje = "<p style='color:red;'>Error al preparar la consulta: " . htmlspecialchars($conn->error) . "</p>";
-        }
-        */
-    } else {
-        $mensaje = "<p style='color:orange;'>No se introdujo ningún dato para modificar.</p>";
+    } 
+    else {
+        $mensaje = "<p class='error-msg';>No se introdujo ningún dato para modificar.</p>";
     }
-}
+
 //CARGAR DATOS ACTUALES DE LA PELÍCULA 
 // Se necesita para mostrar los placeholders en el formulario
 $stmt = $conn->prepare("SELECT * FROM pelicula WHERE idPelicula = ?");
@@ -184,17 +149,18 @@ $conn->close();
         
         <br>Duración (minutos):<br>
         <input type="number" name="duracion" id="duracion" placeholder="<?php echo htmlspecialchars($pelicula['duracion']); ?>">
-
+        	<input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
         <br><br>
         
         <input type="submit" value="Guardar Cambios" name="modify_submit" class="save-button">   
     </form>
-        
-    <div style="text-align:center; margin-top:20px;">
+    <?php if (isset($_SESSION['rol']) && $_SESSION['rol'] === 'admin'): ?>
+    <div >
     <a href="delete_item.php?id=<?php echo $pelicula['idPelicula']; ?>" class="delete-button">Eliminar Película
     </a>
+    <?php endif; ?>
 </div>
-<div class="button-container" style="text-align:center; margin-top:10px;">
+<div class="button-container" >
     <a href="items.php" class="button back-button">Volver</a>
 </div>
 
